@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Erebus</title>
+
+<!-- xterm.js — real terminal emulator in the browser -->
+<link  rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
+<style>
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+/* ── Design Tokens ──────────────────────────────────────────────────────── */
+:root {
+  --font:            "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-size:       13px;
+  --bg:              #0a0a0a;
+  --surface:         #111111;
+  --surface-2:       #181818;
+  --border:          #222222;
+  --accent:          #ff2a2a;
+  --accent-dim:      #8b0000;
+  --text:            #e0e0e0;
+  --text-muted:      #555555;
+  --text-dim:        #333333;
+  --explorer-width:  22%;
+  --terminal-height: 32%;
+  --radius:          0px;
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  user-select: none;
+}
+
+/* ── Titlebar ────────────────────────────────────────────────────────────── */
+#titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+#titlebar-left { display: flex; align-items: center; gap: 10px; }
+#logo { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .25em; text-transform: uppercase; }
+#titlebar-sep { width: 1px; height: 14px; background: var(--border); }
+#titlebar-path { color: var(--text-muted); font-size: 11px; letter-spacing: .05em; }
+#titlebar-right { display: flex; align-items: center; gap: 16px; -webkit-app-region: no-drag; }
+.tb-btn {
+  background: none; border: none; color: var(--text-muted);
+  font-family: var(--font); font-size: 11px; cursor: pointer;
+  padding: 2px 6px; border-radius: var(--radius); letter-spacing: .05em;
+  transition: color .15s, background .15s;
+}
+.tb-btn:hover { color: var(--text); background: var(--surface-2); }
+.tb-btn.active { color: var(--accent); }
+
+/* ── Workspace ───────────────────────────────────────────────────────────── */
+#workspace { display: flex; flex: 1; overflow: hidden; flex-direction: column; }
+#workspace-top { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Explorer ────────────────────────────────────────────────────────────── */
+#explorer {
+  width: var(--explorer-width);
+  min-width: 160px; max-width: 40%;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden; flex-shrink: 0;
+}
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; height: 28px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.panel-label { font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--text-muted); }
+.panel-actions { display: flex; gap: 4px; }
+.panel-icon-btn {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 13px; padding: 2px 4px;
+  border-radius: var(--radius); line-height: 1; transition: color .1s;
+}
+.panel-icon-btn:hover { color: var(--accent); }
+
+#explorer-path-bar {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#explorer-path-input {
+  flex: 1; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-family: var(--font);
+  font-size: 11px; padding: 2px 6px; outline: none;
+}
+#explorer-path-input:focus { border-color: var(--accent-dim); }
+
+#explorer-tree { flex: 1; overflow-y: auto; padding: 4px 0; }
+#explorer-tree::-webkit-scrollbar { width: 4px; }
+#explorer-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.tree-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px; cursor: pointer; font-size: 12px; color: var(--text-muted);
+  transition: background .1s, color .1s; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; position: relative;
+}
+.tree-item:hover { background: var(--surface-2); color: var(--text); }
+.tree-item.selected { background: var(--surface-2); color: var(--text); }
+.tree-item.selected::before {
+  content: ''; position: absolute; left: 0; width: 2px; height: 100%;
+  background: var(--accent);
+}
+.tree-item .ti-icon { font-size: 12px; flex-shrink: 0; }
+.tree-item.dir > .ti-icon { color: var(--accent); }
+.tree-item .ti-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.tree-item.hidden { opacity: 0.45; }
+.tree-children { display: none; }
+.tree-children.open { display: block; }
+
+/* ── Resize handles ──────────────────────────────────────────────────────── */
+.resize-handle-x {
+  width: 4px; background: transparent; cursor: col-resize;
+  flex-shrink: 0; transition: background .2s;
+}
+.resize-handle-x:hover, .resize-handle-x.dragging { background: var(--accent-dim); }
+.resize-handle-y {
+  height: 4px; background: transparent; cursor: row-resize;
+  flex-shrink: 0; transition: background .2s;
+}
+.resize-handle-y:hover, .resize-handle-y.dragging { background: var(--accent-dim); }
+
+/* ── Editor ──────────────────────────────────────────────────────────────── */
+#editor-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+#editor-tabs {
+  display: flex; align-items: center; height: 32px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 6px; gap: 2px; flex-shrink: 0; overflow-x: auto;
+}
+#editor-tabs::-webkit-scrollbar { height: 2px; }
+#editor-tabs::-webkit-scrollbar-thumb { background: var(--border); }
+.editor-tab {
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  height: 24px; font-size: 11px; color: var(--text-muted); cursor: pointer;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color .15s, border-color .15s; flex-shrink: 0; position: relative;
+}
+.editor-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.editor-tab:hover:not(.active) { color: var(--text); }
+.editor-tab .tab-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); display: none; }
+.editor-tab.dirty .tab-dot { display: inline-block; }
+.editor-tab .tab-close { color: var(--text-dim); font-size: 10px; margin-left: 2px; transition: color .1s; }
+.editor-tab .tab-close:hover { color: var(--accent); }
+.editor-tab-new {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; color: var(--text-muted); cursor: pointer;
+  font-size: 16px; border-radius: var(--radius); flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.editor-tab-new:hover { color: var(--accent); background: var(--surface-2); }
+
+#editor-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+#editor-welcome {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--text-muted); gap: 8px;
+}
+#editor-welcome .ew-logo { color: var(--accent); font-size: 28px; font-weight: 700; letter-spacing: .2em; }
+#editor-welcome .ew-hint { font-size: 11px; letter-spacing: .05em; }
+
+#line-numbers {
+  width: 48px; padding: 12px 0; background: var(--bg); color: var(--text-dim);
+  font-size: 12px; text-align: right; padding-right: 12px;
+  border-right: 1px solid var(--border); overflow: hidden;
+  flex-shrink: 0; line-height: 1.6; user-select: none;
+}
+#editor-content {
+  flex: 1; padding: 12px 16px; overflow: auto;
+  font-size: 13px; line-height: 1.6; color: var(--text);
+  white-space: pre; tab-size: 4; outline: none;
+  caret-color: var(--accent);
+}
+#editor-content::-webkit-scrollbar { width: 6px; height: 6px; }
+#editor-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Syntax colours */
+.sk { color: #ff2a2a; }   /* keyword  */
+.ss { color: #98c379; }   /* string   */
+.sc { color: #555; font-style: italic; } /* comment */
+.sf { color: #61afef; }   /* function */
+.sn { color: #d19a66; }   /* number   */
+.so { color: #c678dd; }   /* operator */
+
+/* ── Terminal ─────────────────────────────────────────────────────────────── */
+#terminal-panel {
+  height: var(--terminal-height); min-height: 80px; max-height: 70%;
+  background: var(--bg); border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+#terminal-tabs {
+  display: flex; align-items: center; height: 28px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 6px; gap: 2px; flex-shrink: 0;
+}
+.term-tab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 8px; height: 20px; font-size: 11px; color: var(--text-muted);
+  cursor: pointer; border-radius: var(--radius);
+  transition: color .1s, background .1s; white-space: nowrap;
+}
+.term-tab.active { color: var(--text); background: var(--surface-2); }
+.term-tab:hover:not(.active) { color: var(--text); }
+.term-tab .tdot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.term-tab .tab-close { color: var(--text-dim); font-size: 10px; margin-left: 4px; }
+.term-tab .tab-close:hover { color: var(--accent); }
+.term-tab-actions { margin-left: auto; display: flex; gap: 4px; }
+
+#terminal-body { flex: 1; overflow: hidden; padding: 4px 4px 0; position: relative; }
+.xterm-container { width: 100%; height: 100%; }
+/* Override xterm defaults to match our palette */
+.xterm { height: 100%; }
+.xterm-screen { height: 100% !important; }
+
+/* ── Status Bar ──────────────────────────────────────────────────────────── */
+#statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 22px; background: var(--accent); padding: 0 10px; flex-shrink: 0;
+}
+#statusbar-left, #statusbar-right { display: flex; align-items: center; gap: 12px; }
+.sb-item { font-size: 10px; font-weight: 600; letter-spacing: .08em; color: #000; text-transform: uppercase; }
+
+/* ── Command Palette ─────────────────────────────────────────────────────── */
+#palette-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.65);
+  display: none; align-items: flex-start; justify-content: center;
+  z-index: 500; padding-top: 15vh; backdrop-filter: blur(2px);
+}
+#palette-overlay.open { display: flex; }
+#palette {
+  width: 560px; max-width: 90vw; background: var(--surface);
+  border: 1px solid var(--accent); border-radius: var(--radius); overflow: hidden;
+  box-shadow: 0 0 60px rgba(255,42,42,.15), 0 20px 60px rgba(0,0,0,.8);
+}
+#palette-input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; border-bottom: 1px solid var(--border); height: 44px;
+}
+#palette-chevron { color: var(--accent); font-size: 14px; }
+#palette-input {
+  flex: 1; background: none; border: none; outline: none;
+  font-family: var(--font); font-size: 13px; color: var(--text); caret-color: var(--accent);
+}
+#palette-input::placeholder { color: var(--text-muted); }
+#palette-results { max-height: 300px; overflow-y: auto; padding: 4px 0; }
+.palette-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; transition: background .1s;
+}
+.palette-item:hover, .palette-item.selected { background: var(--surface-2); }
+.palette-item .p-icon { font-size: 14px; color: var(--text-muted); width: 18px; text-align: center; }
+.palette-item .p-label { font-size: 12px; color: var(--text); flex: 1; }
+.palette-item .p-kbd {
+  font-size: 10px; color: var(--text-muted); background: var(--bg);
+  border: 1px solid var(--border); padding: 1px 5px; border-radius: 2px;
+}
+#palette-hint { padding: 6px 14px; font-size: 10px; color: var(--text-muted); border-top: 1px solid var(--border); }
+
+/* ── Context Menu ────────────────────────────────────────────────────────── */
+#ctx-menu {
+  position: fixed; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); z-index: 600; min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6); display: none; overflow: hidden;
+}
+#ctx-menu.open { display: block; }
+.ctx-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+  font-size: 12px; color: var(--text-muted); cursor: pointer; transition: background .1s;
+}
+.ctx-item:hover { background: var(--surface-2); color: var(--text); }
+.ctx-item.danger:hover { color: var(--accent); }
+.ctx-sep { height: 1px; background: var(--border); margin: 2px 0; }
+
+/* ── Rename inline input ─────────────────────────────────────────────────── */
+.rename-input {
+  background: var(--surface-2); border: 1px solid var(--accent);
+  color: var(--text); font-family: var(--font); font-size: 12px;
+  padding: 1px 4px; outline: none; border-radius: 2px; width: 100%;
+}
+
+/* ── Notification toast ──────────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 12px; padding: 8px 16px;
+  border-radius: var(--radius); z-index: 900; opacity: 0;
+  transition: opacity .2s; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+#toast.error { border-color: var(--accent); color: var(--accent); }
+
+/* ── Setup Wizard ────────────────────────────────────────────────────────── */
+#setup-overlay {
+  position: fixed; inset: 0; background: var(--bg);
+  display: none; flex-direction: column; align-items: center;
+  justify-content: center; z-index: 1000;
+}
+#setup-overlay.open { display: flex; }
+#setup-card {
+  width: 560px; max-width: 95vw;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 4px; overflow: hidden;
+  box-shadow: 0 0 80px rgba(255,42,42,.08);
+}
+#setup-header {
+  padding: 28px 32px 16px; border-bottom: 1px solid var(--border);
+}
+#setup-logo { color: var(--accent); font-size: 18px; font-weight: 700; letter-spacing: .3em; margin-bottom: 6px; }
+#setup-subtitle { color: var(--text-muted); font-size: 12px; letter-spacing: .05em; }
+#setup-body { padding: 24px 32px; display: flex; flex-direction: column; gap: 20px; }
+#setup-footer {
+  padding: 16px 32px; border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+
+.setup-field label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.setup-field select, .setup-field input[type="text"] {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--font); font-size: 12px;
+  padding: 7px 10px; border-radius: var(--radius); outline: none;
+  transition: border-color .15s; appearance: none;
+}
+.setup-field select:focus, .setup-field input[type="text"]:focus { border-color: var(--accent-dim); }
+.setup-field .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.setup-section-title {
+  font-size: 10px; font-weight: 700; letter-spacing: .15em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: -8px;
+}
+.setup-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.btn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  font-family: var(--font); font-size: 11px; padding: 7px 18px;
+  cursor: pointer; border-radius: var(--radius); letter-spacing: .08em;
+  transition: all .15s;
+}
+.btn:hover { border-color: var(--text-muted); color: var(--text); }
+.btn-primary {
+  background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700;
+}
+.btn-primary:hover { background: #ff4444; border-color: #ff4444; color: #000; }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+#setup-loading { color: var(--text-muted); font-size: 12px; letter-spacing: .05em; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ SETUP WIZARD ═════════════════════════════════════ -->
+<div id="setup-overlay">
+  <div id="setup-card">
+    <div id="setup-header">
+      <div id="setup-logo">EREBUS</div>
+      <div id="setup-subtitle">First-launch configuration — takes 30 seconds.</div>
+    </div>
+
+    <div id="setup-body">
+      <div id="setup-loading">Detecting your environment…</div>
+    </div>
+
+    <div id="setup-footer" style="display:none">
+      <button class="btn btn-primary" id="setup-btn-finish" onclick="finishSetup()">Launch Erebus →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ TITLEBAR ═════════════════════════════════════════ -->
+<div id="titlebar">
+  <div id="titlebar-left">
+    <span id="logo">EREBUS</span>
+    <div id="titlebar-sep"></div>
+    <span id="titlebar-path">~</span>
+  </div>
+  <div id="titlebar-right">
+    <button class="tb-btn" id="btn-explorer" onclick="togglePanel('explorer')">EXPLORER</button>
+    <button class="tb-btn" id="btn-terminal" onclick="togglePanel('terminal')">TERMINAL</button>
+    <button class="tb-btn" onclick="openPalette()">⌘ PALETTE</button>
+  </div>
+</div>
+
+<!-- ════════════════════ WORKSPACE ════════════════════════════════════════ -->
+<div id="workspace">
+  <div id="workspace-top">
+
+    <!-- EXPLORER -->
+    <div id="explorer">
+      <div class="panel-header">
+        <span class="panel-label">Explorer</span>
+        <div class="panel-actions">
+          <button class="panel-icon-btn" title="New file (Ctrl+Shift+N)" onclick="explorerNewFile()">+</button>
+          <button class="panel-icon-btn" title="New folder" onclick="explorerNewDir()">⊞</button>
+          <button class="panel-icon-btn" title="Refresh" onclick="explorerRefresh()">↻</button>
+        </div>
+      </div>
+      <div id="explorer-path-bar">
+        <input id="explorer-path-input" type="text" value="~"
+               onkeydown="if(event.key==='Enter')navigateTo(this.value)" />
+        <button class="panel-icon-btn" onclick="navigateTo(document.getElementById('explorer-path-input').value)" title="Go">→</button>
+        <button class="panel-icon-btn" onclick="explorerGoUp()" title="Up">↑</button>
+      </div>
+      <div id="explorer-tree"></div>
+    </div>
+
+    <div class="resize-handle-x" id="rh-explorer"></div>
+
+    <!-- EDITOR -->
+    <div id="editor-panel">
+      <div id="editor-tabs">
+        <span class="editor-tab-new" title="New file (Ctrl+N)" onclick="newUntitledTab()">+</span>
+      </div>
+      <div id="editor-body">
+        <div id="editor-welcome">
+          <div class="ew-logo">EREBUS</div>
+          <div class="ew-hint">Open a file from the explorer or press Ctrl+P</div>
+        </div>
+        <div id="line-numbers" style="display:none"></div>
+        <div id="editor-content" contenteditable="false" spellcheck="false"
+             style="display:none"
+             oninput="onEditorInput()"
+             onscroll="syncLineNumbers()"
+             onkeydown="onEditorKeydown(event)"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="resize-handle-y" id="rh-terminal"></div>
+
+  <!-- TERMINAL -->
+  <div id="terminal-panel">
+    <div id="terminal-tabs">
+      <button class="panel-icon-btn" title="New terminal" onclick="newTerminalTab()" style="flex-shrink:0">+</button>
+      <div id="term-tab-list" style="display:flex;gap:2px;flex:1;overflow:hidden"></div>
+      <div class="term-tab-actions">
+        <button class="panel-icon-btn" title="Maximize terminal" onclick="toggleMaxTerminal()">⤢</button>
+        <button class="panel-icon-btn" title="Close terminal" onclick="togglePanel('terminal')">✕</button>
+      </div>
+    </div>
+    <div id="terminal-body"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ STATUS BAR ═══════════════════════════════════════ -->
+<div id="statusbar">
+  <div id="statusbar-left">
+    <span class="sb-item">⬡ EREBUS</span>
+    <span class="sb-item" id="sb-shell">–</span>
+    <span class="sb-item" id="sb-editor">BUILTIN EDITOR</span>
+  </div>
+  <div id="statusbar-right">
+    <span class="sb-item" id="sb-file">–</span>
+    <span class="sb-item" id="sb-encoding">UTF-8</span>
+    <span class="sb-item" id="sb-lang">–</span>
+    <span class="sb-item" id="sb-cursor">Ln 1, Col 1</span>
+  </div>
+</div>
+
+<!-- ════════════════════ COMMAND PALETTE ══════════════════════════════════ -->
+<div id="palette-overlay" onclick="if(event.target===this)closePalette()">
+  <div id="palette">
+    <div id="palette-input-wrap">
+      <span id="palette-chevron">›</span>
+      <input id="palette-input" type="text" placeholder="Type a command or filename…" autocomplete="off" />
+    </div>
+    <div id="palette-results"></div>
+    <div id="palette-hint">↑↓ navigate &nbsp; ↵ execute &nbsp; esc close</div>
+  </div>
+</div>
+
+<!-- ════════════════════ CONTEXT MENU ════════════════════════════════════ -->
+<div id="ctx-menu"></div>
+
+<!-- ════════════════════ TOAST ═══════════════════════════════════════════ -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  GLOBALS
+// ═══════════════════════════════════════════════════════════════════════════
+// Read pywebview.api dynamically — pywebview injects it asynchronously after
+// the page loads, so capturing it as a constant at module-eval time races the
+// injection and leaves `api` as null even in a live pywebview session.
+const api = new Proxy({}, {
+  get(_, prop) {
+    const backend = window.pywebview?.api;
+    if (!backend) return undefined;
+    const val = backend[prop];
+    return typeof val === 'function' ? val.bind(backend) : val;
+  },
+  has(_, prop) { return prop in (window.pywebview?.api ?? {}); }
+});
+
+// True only when actually running inside a pywebview window.
+function hasBackend() { return !!window.pywebview?.api; }
+
+let CONFIG = {
+  explorerWidth: 22, terminalHeight: 32,
+  showExplorer: true, showTerminal: true,
+  shell: { command: 'bash', provider: 'bash' },
+  editor: { tab_size: 4 },
+};
+
+// ─── Explorer state ──────────────────────────────────────────────────────────
+let explorerCwd      = '~';
+let explorerSelected = null;   // full path of selected item
+let showHidden       = false;
+
+// ─── Editor state ────────────────────────────────────────────────────────────
+let editorTabs   = [];    // [{id, path, name, content, dirty, lang}]
+let activeTabId  = null;
+
+// ─── Terminal state ──────────────────────────────────────────────────────────
+let termTabs     = [];    // [{id, xterm, fitAddon, label}]
+let activeTermId = null;
+let termCounter  = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  BOOT — called from main.py after config injection
+// ═══════════════════════════════════════════════════════════════════════════
+function onErebusReady(cfg, firstRun) {
+  CONFIG = cfg;
+  document.getElementById('sb-shell').textContent  = (cfg.shell.provider || 'bash').toUpperCase();
+  document.getElementById('sb-editor').textContent = (cfg.editor.provider || 'builtin').toUpperCase() + ' EDITOR';
+
+  if (firstRun) {
+    showSetupWizard();
+  } else {
+    bootWorkspace();
+  }
+}
+
+function bootWorkspace() {
+  const startPath = CONFIG.ui?.start_path || '~';
+  navigateTo(startPath);
+  newTerminalTab();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SETUP WIZARD
+// ═══════════════════════════════════════════════════════════════════════════
+let setupData = null;
+
+async function showSetupWizard() {
+  document.getElementById('setup-overlay').classList.add('open');
+  document.getElementById('setup-loading').style.display = 'block';
+
+  let data;
+  try {
+    data = await api.get_setup_data();
+    setupData = data;
+  } catch(e) {
+    setupData = {
+      shells: ['bash'], editors: ['nano'], terminals: [],
+      selected_shell: 'bash', selected_editor: 'nano',
+      selected_terminal: '', home_dir: '/home/user'
+    };
+    data = setupData;
+  }
+
+  const body = document.getElementById('setup-body');
+  body.innerHTML = `
+    <div class="setup-section-title">Shell</div>
+    <div class="setup-row">
+      <div class="setup-field">
+        <label>Shell provider</label>
+        <select id="sw-shell">
+          ${data.shells.map(s =>
+            `<option value="${s}" ${s===data.selected_shell?'selected':''}>${s}</option>`
+          ).join('')}
+        </select>
+        <div class="field-hint">Used for the embedded terminal.</div>
+      </div>
+      <div class="setup-field">
+        <label>Terminal emulator (optional)</label>
+        <select id="sw-terminal">
+          <option value="">None (use built-in)</option>
+          ${data.terminals.map(t =>
+            `<option value="${t}" ${t===data.selected_terminal?'selected':''}>${t}</option>`
+          ).join('')}
+        </select>
+        <div class="field-hint">External terminal for "open in terminal".</div>
+      </div>
+    </div>
+
+    <div class="setup-section-title" style="margin-top:4px">Editor</div>
+    <div class="setup-row">
+      <div class="setup-field">
+        <label>Editor</label>
+        <select id="sw-editor">
+          <option value="builtin" ${'builtin'===data.selected_editor?'selected':''}>Builtin (Erebus)</option>
+          ${data.editors.map(e =>
+            `<option value="${e}" ${e===data.selected_editor?'selected':''}>${e}</option>`
+          ).join('')}
+        </select>
+        <div class="field-hint">Default editor for opening files.</div>
+      </div>
+      <div class="setup-field">
+        <label>Default start directory</label>
+        <input type="text" id="sw-startpath" value="${data.home_dir}" />
+        <div class="field-hint">Where the explorer opens on launch.</div>
+      </div>
+    </div>
+
+    <div class="setup-section-title" style="margin-top:4px">Appearance</div>
+    <div class="setup-row">
+      <div class="setup-field">
+        <label>Theme</label>
+        <select id="sw-theme">
+          <option value="dark">Dark (default)</option>
+          <option value="darker">Darker</option>
+          <option value="red">Red Accent</option>
+        </select>
+      </div>
+      <div class="setup-field">
+        <label>Font size (px)</label>
+        <input type="text" id="sw-fontsize" value="13" />
+      </div>
+    </div>
+  `;
+
+  document.getElementById('setup-footer').style.display = 'flex';
+}
+
+async function finishSetup() {
+  const btn = document.getElementById('setup-btn-finish');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const choices = {
+    shell:      document.getElementById('sw-shell').value,
+    editor:     document.getElementById('sw-editor').value,
+    terminal:   document.getElementById('sw-terminal').value,
+    start_path: document.getElementById('sw-startpath').value,
+    theme:      document.getElementById('sw-theme').value,
+  };
+
+  try {
+    const r = await api.complete_setup(choices);
+    if (!r.ok) throw new Error(r.error || 'Setup failed');
+    // Reload config and boot
+    const cfgResult = await api.get_config();
+    CONFIG = cfgResult;
+    document.getElementById('setup-overlay').classList.remove('open');
+    bootWorkspace();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Launch Erebus →';
+    showToast('Setup error: ' + e.message, true);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EXPLORER
+// ═══════════════════════════════════════════════════════════════════════════
+async function navigateTo(path) {
+  if (!hasBackend()) { renderDemoTree(); return; }
+  const res = await api.fs_list(path);
+  if (!res.ok) { showToast(res.error, true); return; }
+  explorerCwd = res.path;
+  document.getElementById('explorer-path-input').value = res.path;
+  document.getElementById('titlebar-path').textContent = res.path;
+  renderTree(res.path, res.entries);
+}
+
+function renderTree(basePath, entries) {
+  const tree = document.getElementById('explorer-tree');
+  tree.innerHTML = '';
+
+  for (const e of entries) {
+    if (e.hidden && !showHidden) continue;
+    const row = makeTreeItem(e);
+    tree.appendChild(row);
+  }
+}
+
+function makeTreeItem(entry) {
+  const row = document.createElement('div');
+  row.className = 'tree-item' + (entry.hidden ? ' hidden' : '') + (entry.type === 'dir' ? ' dir' : '') + (entry.broken ? ' broken' : '');
+  row.dataset.path = entry.path;
+  row.dataset.type = entry.type;
+
+  const icon = document.createElement('span');
+  icon.className = 'ti-icon';
+  icon.textContent = entry.type === 'dir' ? '▸' : (entry.broken ? '⚠' : fileIcon(entry.ext));
+
+  const name = document.createElement('span');
+  name.className = 'ti-name';
+  name.textContent = entry.name + (entry.symlink ? ' →' : '');
+  if (entry.broken) name.style.opacity = '0.45';
+
+  row.appendChild(icon);
+  row.appendChild(name);
+
+  if (entry.type === 'dir') {
+    const childContainer = document.createElement('div');
+    childContainer.className = 'tree-children';
+    childContainer.style.paddingLeft = '16px';
+
+    // Single click: select + expand/collapse inline
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectExplorerItem(entry.path);
+      const open = childContainer.classList.toggle('open');
+      icon.textContent = open ? '▾' : '▸';
+      if (open && childContainer.childElementCount === 0) {
+        loadSubdir(entry.path, childContainer);
+      }
+    });
+
+    // Double click: navigate the explorer root into this directory
+    row.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      navigateTo(entry.path);
+    });
+
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showCtxMenu(e, entry);
+    });
+
+    const wrapper = document.createElement('div');
+    wrapper.appendChild(row);
+    wrapper.appendChild(childContainer);
+    return wrapper;
+  } else {
+    // Single click: select only
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectExplorerItem(entry.path);
+    });
+    // Double click: open in editor
+    row.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      if (entry.editable && !entry.broken) openFile(entry.path);
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showCtxMenu(e, entry);
+    });
+    return row;
+  }
+}
+
+async function loadSubdir(path, container) {
+  if (!hasBackend()) return;
+  const res = await api.fs_list(path);
+  if (!res.ok) return;
+  container.innerHTML = '';
+  for (const e of res.entries) {
+    if (e.hidden && !showHidden) continue;
+    container.appendChild(makeTreeItem(e));
+  }
+}
+
+function selectExplorerItem(path) {
+  explorerSelected = path;
+  document.querySelectorAll('#explorer-tree .tree-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.path === path);
+  });
+}
+
+function explorerGoUp() {
+  if (!explorerCwd || explorerCwd === '/') return;
+  const parts = explorerCwd.split('/');
+  parts.pop();
+  navigateTo(parts.join('/') || '/');
+}
+
+async function explorerRefresh() {
+  await navigateTo(explorerCwd);
+}
+
+async function explorerNewFile() {
+  const name = prompt('New file name:');
+  if (!name) return;
+  const res = await api.fs_create_file(explorerCwd + '/' + name);
+  if (res.ok) { explorerRefresh(); openFile(res.path); }
+  else showToast(res.error, true);
+}
+
+async function explorerNewDir() {
+  const name = prompt('New folder name:');
+  if (!name) return;
+  const res = await api.fs_create_dir(explorerCwd + '/' + name);
+  if (res.ok) explorerRefresh();
+  else showToast(res.error, true);
+}
+
+function fileIcon(ext) {
+  const icons = {
+    '.py':'🐍', '.js':'📜', '.ts':'📘', '.html':'🌐', '.css':'🎨',
+    '.json':'{}', '.toml':'⚙', '.md':'📄', '.sh':'$', '.bash':'$',
+    '.zsh':'$', '.rs':'🦀', '.go':'🐹', '.c':'©', '.cpp':'©',
+    '.txt':'📃', '.yml':'📋', '.yaml':'📋', '.sql':'🗄', '.log':'📋',
+  };
+  return icons[ext] || '·';
+}
+
+// ─── Context menu ─────────────────────────────────────────────────────────────
+function showCtxMenu(e, entry) {
+  const menu = document.getElementById('ctx-menu');
+  const isDir = entry.type === 'dir';
+  menu.innerHTML = `
+    ${isDir ? `<div class="ctx-item" onclick="ctxOpenDir('${esc(entry.path)}')">📂 Open in explorer</div>` : ''}
+    ${!isDir && entry.editable ? `<div class="ctx-item" onclick="openFile('${esc(entry.path)}')">✎ Open in editor</div>` : ''}
+    <div class="ctx-item" onclick="ctxOpenTerm('${esc(entry.path)}')">$ Open in terminal</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="ctxRename('${esc(entry.path)}')">✏ Rename</div>
+    <div class="ctx-item" onclick="ctxCopy('${esc(entry.path)}')">⧉ Copy path</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="ctxDelete('${esc(entry.path)}')">✕ Delete</div>
+  `;
+  menu.style.left = e.clientX + 'px';
+  menu.style.top  = e.clientY + 'px';
+  menu.classList.add('open');
+}
+
+function esc(s) { return s.replace(/'/g, "\\'"); }
+
+document.addEventListener('click', () => document.getElementById('ctx-menu').classList.remove('open'));
+
+function ctxOpenDir(path) { navigateTo(path); }
+function ctxOpenTerm(path) {
+  if (activeTermId !== null) {
+    const tab = termTabs.find(t => t.id === activeTermId);
+    if (tab) tab.xterm.paste('cd "' + path + '"\r');
+  }
+}
+async function ctxRename(path) {
+  const oldName = path.split('/').pop();
+  const newName = prompt('Rename to:', oldName);
+  if (!newName || newName === oldName) return;
+  const dir = path.substring(0, path.lastIndexOf('/'));
+  const res = await api.fs_rename(path, dir + '/' + newName);
+  if (res.ok) explorerRefresh(); else showToast(res.error, true);
+}
+async function ctxDelete(path) {
+  if (!confirm('Delete ' + path.split('/').pop() + '?')) return;
+  const res = await api.fs_delete(path);
+  if (res.ok) explorerRefresh(); else showToast(res.error, true);
+}
+function ctxCopy(path) {
+  navigator.clipboard?.writeText(path);
+  showToast('Path copied');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EDITOR
+// ═══════════════════════════════════════════════════════════════════════════
+function newUntitledTab() {
+  const id = 'tab-' + Date.now();
+  const tab = { id, path: null, name: 'untitled', content: '', dirty: false, lang: 'text' };
+  editorTabs.push(tab);
+  renderEditorTabs();
+  switchEditorTab(id);
+}
+
+async function openFile(path) {
+  // If already open, switch to it
+  const existing = editorTabs.find(t => t.path === path);
+  if (existing) { switchEditorTab(existing.id); return; }
+
+  if (!hasBackend()) return;
+  const res = await api.fs_read(path);
+  if (!res.ok) { showToast(res.error, true); return; }
+
+  const id = 'tab-' + Date.now();
+  const lang = detectLang(res.ext);
+  const tab = { id, path: res.path, name: res.name, content: res.content, dirty: false, lang };
+  editorTabs.push(tab);
+  renderEditorTabs();
+  switchEditorTab(id);
+}
+
+function switchEditorTab(id) {
+  activeTabId = id;
+  const tab = editorTabs.find(t => t.id === id);
+  if (!tab) return;
+
+  renderEditorTabs();
+
+  const welcome  = document.getElementById('editor-welcome');
+  const lnums    = document.getElementById('line-numbers');
+  const content  = document.getElementById('editor-content');
+
+  welcome.style.display  = 'none';
+  lnums.style.display    = 'block';
+  content.style.display  = 'block';
+  content.contentEditable = 'true';
+
+  content.innerHTML = highlight(tab.content, tab.lang);
+  syncLineNumbers();
+  updateCursorStatus();
+
+  document.getElementById('sb-file').textContent = tab.name;
+  document.getElementById('sb-lang').textContent = tab.lang.toUpperCase();
+}
+
+function closeEditorTab(id) {
+  const tab = editorTabs.find(t => t.id === id);
+  if (tab?.dirty && !confirm('Discard unsaved changes in ' + tab.name + '?')) return;
+  editorTabs = editorTabs.filter(t => t.id !== id);
+  renderEditorTabs();
+  if (editorTabs.length === 0) {
+    activeTabId = null;
+    document.getElementById('editor-welcome').style.display = 'flex';
+    document.getElementById('line-numbers').style.display   = 'none';
+    document.getElementById('editor-content').style.display = 'none';
+    document.getElementById('sb-file').textContent = '–';
+    document.getElementById('sb-lang').textContent = '–';
+  } else {
+    switchEditorTab(editorTabs[editorTabs.length - 1].id);
+  }
+}
+
+function renderEditorTabs() {
+  const bar = document.getElementById('editor-tabs');
+  // Keep the "+" button
+  bar.innerHTML = '';
+  for (const tab of editorTabs) {
+    const el = document.createElement('div');
+    el.className = 'editor-tab' + (tab.id === activeTabId ? ' active' : '') + (tab.dirty ? ' dirty' : '');
+    el.innerHTML = `
+      <span class="tab-dot"></span>
+      <span>${tab.name}</span>
+      <span class="tab-close" data-id="${tab.id}">✕</span>
+    `;
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-close')) { closeEditorTab(tab.id); return; }
+      switchEditorTab(tab.id);
+    });
+    bar.appendChild(el);
+  }
+  const plus = document.createElement('span');
+  plus.className = 'editor-tab-new';
+  plus.title = 'New file (Ctrl+N)';
+  plus.textContent = '+';
+  plus.onclick = newUntitledTab;
+  bar.appendChild(plus);
+}
+
+function onEditorInput() {
+  const tab = editorTabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+  tab.dirty = true;
+  tab.content = document.getElementById('editor-content').innerText;
+  syncLineNumbers();
+  // Mark tab dirty
+  const el = document.querySelector(`.editor-tab[data-id="${activeTabId}"]`);
+  if (el) el.classList.add('dirty');
+  renderEditorTabs();
+}
+
+function syncLineNumbers() {
+  const content = document.getElementById('editor-content');
+  const lnums   = document.getElementById('line-numbers');
+  const lines   = content.innerText.split('\n').length;
+  lnums.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+  lnums.scrollTop = content.scrollTop;
+}
+
+async function saveActiveFile() {
+  const tab = editorTabs.find(t => t.id === activeTabId);
+  if (!tab) return;
+  const content = document.getElementById('editor-content').innerText;
+  if (!tab.path) {
+    const name = prompt('Save as:', tab.name);
+    if (!name) return;
+    tab.path = explorerCwd + '/' + name;
+    tab.name = name;
+  }
+  const res = await api.fs_write(tab.path, content);
+  if (res.ok) {
+    tab.dirty   = false;
+    tab.content = content;
+    renderEditorTabs();
+    showToast('Saved ' + tab.name);
+    explorerRefresh();
+  } else {
+    showToast(res.error, true);
+  }
+}
+
+function onEditorKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveActiveFile();
+    return;
+  }
+  // Tab key → insert spaces
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const spaces = CONFIG.editor?.tab_size || 4;
+    document.execCommand('insertText', false, ' '.repeat(spaces));
+    return;
+  }
+  updateCursorStatus();
+}
+
+function updateCursorStatus() {
+  // Rough cursor position via selection
+  try {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0).cloneRange();
+    range.collapse(true);
+    range.selectNodeContents(document.getElementById('editor-content'));
+    range.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+    const text = range.toString();
+    const lines = text.split('\n');
+    const ln = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    document.getElementById('sb-cursor').textContent = `Ln ${ln}, Col ${col}`;
+  } catch(_) {}
+}
+
+// ─── Syntax highlighting (basic, regex-based) ─────────────────────────────────
+function highlight(code, lang) {
+  // Escape HTML first
+  let s = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  if (lang === 'python') {
+    s = s
+      .replace(/(#[^\n]*)/g, '<span class="sc">$1</span>')
+      .replace(/('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g, '<span class="ss">$1</span>')
+      .replace(/\b(def|class|import|from|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|pass|break|continue|try|except|finally|with|as|lambda|yield|async|await|raise|del|global|nonlocal)\b/g,
+        '<span class="sk">$1</span>')
+      .replace(/\b(\d+\.?\d*)\b/g, '<span class="sn">$1</span>');
+  } else if (lang === 'javascript' || lang === 'typescript') {
+    s = s
+      .replace(/(\/\/[^\n]*)/g, '<span class="sc">$1</span>')
+      .replace(/('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)/g, '<span class="ss">$1</span>')
+      .replace(/\b(const|let|var|function|return|if|else|for|while|in|of|new|this|class|import|export|default|async|await|try|catch|finally|throw|typeof|instanceof|null|undefined|true|false)\b/g,
+        '<span class="sk">$1</span>')
+      .replace(/\b(\d+\.?\d*)\b/g, '<span class="sn">$1</span>');
+  } else if (lang === 'html') {
+    s = s
+      .replace(/(&lt;\/?[a-zA-Z][^\s&gt;]*)/g, '<span class="sk">$1</span>')
+      .replace(/("(?:[^"\\]|\\.)*")/g, '<span class="ss">$1</span>');
+  } else if (lang === 'css' || lang === 'scss') {
+    s = s
+      .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sc">$1</span>')
+      .replace(/(#[0-9a-fA-F]{3,8}|'[^']*'|"[^"]*")/g, '<span class="ss">$1</span>')
+      .replace(/([a-zA-Z-]+)\s*:/g, '<span class="sf">$1</span>:');
+  } else if (lang === 'toml' || lang === 'yaml' || lang === 'ini') {
+    s = s
+      .replace(/(#[^\n]*)/g, '<span class="sc">$1</span>')
+      .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="ss">$1</span>')
+      .replace(/\b(true|false|null)\b/g, '<span class="sk">$1</span>')
+      .replace(/\b(\d+\.?\d*)\b/g, '<span class="sn">$1</span>');
+  } else if (lang === 'shell') {
+    s = s
+      .replace(/(#[^\n]*)/g, '<span class="sc">$1</span>')
+      .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="ss">$1</span>')
+      .replace(/\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|local|export|source|echo|exit|shift|set|unset)\b/g,
+        '<span class="sk">$1</span>');
+  }
+
+  return s;
+}
+
+function detectLang(ext) {
+  const map = {
+    '.py':'python', '.js':'javascript', '.ts':'typescript', '.jsx':'javascript',
+    '.tsx':'typescript', '.html':'html', '.htm':'html', '.css':'css', '.scss':'scss',
+    '.json':'json', '.toml':'toml', '.yaml':'yaml', '.yml':'yaml', '.ini':'ini',
+    '.sh':'shell', '.bash':'shell', '.zsh':'shell', '.fish':'shell',
+    '.md':'markdown', '.rs':'rust', '.go':'go', '.c':'c', '.cpp':'cpp',
+    '.sql':'sql', '.txt':'text', '.log':'text',
+  };
+  return map[ext] || 'text';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TERMINAL — xterm.js + PTY
+// ═══════════════════════════════════════════════════════════════════════════
+function ptyOutput(sessionId, data) {
+  const tab = termTabs.find(t => t.id === sessionId);
+  if (tab) tab.xterm.write(data);
+}
+
+async function newTerminalTab() {
+  const id    = 'term-' + (++termCounter);
+  const shell = CONFIG.shell?.command || 'bash';
+  const cwd   = explorerCwd || '~';
+  const label = shell.split('/').pop();
+
+  const container = document.createElement('div');
+  container.className = 'xterm-container';
+  container.id = 'xterm-' + id;
+  container.style.display = 'none';
+  document.getElementById('terminal-body').appendChild(container);
+
+  const xterm = new Terminal({
+    fontFamily: CONFIG.theme?.font_family
+      ? `'${CONFIG.theme.font_family}', 'Fira Code', monospace`
+      : "'JetBrains Mono', 'Fira Code', monospace",
+    fontSize:         CONFIG.theme?.font_size || 13,
+    lineHeight:       1.4,
+    cursorBlink:      true,
+    cursorStyle:      'block',
+    scrollback:       CONFIG.shell?.scrollback || 10000,
+    allowTransparency: true,
+    theme: {
+      background:  CONFIG.theme?.background  || '#0a0a0a',
+      foreground:  CONFIG.theme?.text        || '#e0e0e0',
+      cursor:      CONFIG.theme?.accent      || '#ff2a2a',
+      cursorAccent:'#000',
+      selection:   'rgba(255,42,42,0.25)',
+      black:   '#1a1a1a', brightBlack: '#555',
+      red:     '#ff2a2a', brightRed:   '#ff6666',
+      green:   '#98c379', brightGreen: '#b5e890',
+      yellow:  '#d19a66', brightYellow:'#e5c07b',
+      blue:    '#61afef', brightBlue:  '#82d0ff',
+      magenta: '#c678dd', brightMagenta:'#d9a0f0',
+      cyan:    '#56b6c2', brightCyan:  '#88d8e8',
+      white:   '#e0e0e0', brightWhite: '#ffffff',
+    },
+  });
+
+  const fitAddon = new FitAddon.FitAddon();
+  xterm.loadAddon(fitAddon);
+  xterm.open(container);
+  fitAddon.fit();
+
+  // Send keystrokes to PTY
+  xterm.onData(data => {
+    if (hasBackend()) api.pty_write(id, data);
+  });
+
+  // Resize event
+  xterm.onResize(({ cols, rows }) => {
+    if (hasBackend()) api.pty_resize(id, cols, rows);
+  });
+
+  const tab = { id, xterm, fitAddon, label, container };
+  termTabs.push(tab);
+  renderTermTabs();
+  switchTermTab(id);
+
+  // Spawn the PTY
+  if (hasBackend()) {
+    const { cols, rows } = xterm;
+    await api.pty_new(id, shell, cwd, cols, rows);
+  } else {
+    xterm.write('\x1b[32mErebus terminal (demo — no backend)\x1b[0m\r\n$ ');
+  }
+}
+
+function switchTermTab(id) {
+  activeTermId = id;
+  for (const t of termTabs) {
+    t.container.style.display = t.id === id ? 'block' : 'none';
+    if (t.id === id) {
+      // Small delay to let container become visible before fitting
+      setTimeout(() => { t.fitAddon.fit(); t.xterm.focus(); }, 20);
+    }
+  }
+  renderTermTabs();
+}
+
+async function closeTermTab(id) {
+  if (hasBackend()) await api.pty_kill(id);
+  const tab = termTabs.find(t => t.id === id);
+  if (tab) tab.container.remove();
+  termTabs = termTabs.filter(t => t.id !== id);
+  renderTermTabs();
+  if (termTabs.length > 0) {
+    switchTermTab(termTabs[termTabs.length - 1].id);
+  } else {
+    activeTermId = null;
+  }
+}
+
+function renderTermTabs() {
+  const list = document.getElementById('term-tab-list');
+  list.innerHTML = '';
+  for (const t of termTabs) {
+    const el = document.createElement('div');
+    el.className = 'term-tab' + (t.id === activeTermId ? ' active' : '');
+    el.innerHTML = `<span class="tdot"></span><span>${t.label}</span><span class="tab-close">✕</span>`;
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-close')) { closeTermTab(t.id); return; }
+      switchTermTab(t.id);
+    });
+    list.appendChild(el);
+  }
+}
+
+let termMaximized = false;
+function toggleMaxTerminal() {
+  const panel = document.getElementById('terminal-panel');
+  const top   = document.getElementById('workspace-top');
+  termMaximized = !termMaximized;
+  panel.style.height = termMaximized ? 'calc(100% - 4px)' : 'var(--terminal-height)';
+  top.style.display  = termMaximized ? 'none' : '';
+  // Refit all xterm instances
+  for (const t of termTabs) t.fitAddon.fit();
+}
+
+// Refit xterms when terminal panel resizes
+new ResizeObserver(() => {
+  for (const t of termTabs) {
+    try { t.fitAddon.fit(); } catch(_) {}
+  }
+}).observe(document.getElementById('terminal-body'));
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PANEL TOGGLES & RESIZE
+// ═══════════════════════════════════════════════════════════════════════════
+function togglePanel(panel) {
+  if (panel === 'explorer') {
+    const el = document.getElementById('explorer');
+    const rh = document.getElementById('rh-explorer');
+    const btn = document.getElementById('btn-explorer');
+    const hidden = el.style.display === 'none';
+    el.style.display = hidden ? '' : 'none';
+    rh.style.display = hidden ? '' : 'none';
+    btn.classList.toggle('active', !hidden ? false : true);
+  } else if (panel === 'terminal') {
+    const el = document.getElementById('terminal-panel');
+    const rh = document.getElementById('rh-terminal');
+    const btn = document.getElementById('btn-terminal');
+    const hidden = el.style.display === 'none';
+    el.style.display = hidden ? '' : 'none';
+    rh.style.display = hidden ? '' : 'none';
+    btn.classList.toggle('active', !hidden ? false : true);
+    if (hidden) setTimeout(() => { for(const t of termTabs) t.fitAddon.fit(); }, 20);
+  }
+}
+
+function makeResizableX(handle, target) {
+  let startX, startW;
+  handle.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = target.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    const move = e2 => {
+      const total = document.body.clientWidth;
+      const pct = Math.max(10, Math.min(50, (startW + e2.clientX - startX) / total * 100));
+      document.documentElement.style.setProperty('--explorer-width', pct + '%');
+    };
+    const up = () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+
+function makeResizableY(handle, target) {
+  let startY, startH;
+  handle.addEventListener('mousedown', e => {
+    startY = e.clientY;
+    startH = target.getBoundingClientRect().height;
+    handle.classList.add('dragging');
+    const move = e2 => {
+      const total = document.body.clientHeight;
+      const pct = Math.max(8, Math.min(70, (startH + startY - e2.clientY) / total * 100));
+      document.documentElement.style.setProperty('--terminal-height', pct + '%');
+      for(const t of termTabs) { try { t.fitAddon.fit(); } catch(_){} }
+    };
+    const up = () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+
+makeResizableX(document.getElementById('rh-explorer'),  document.getElementById('explorer'));
+makeResizableY(document.getElementById('rh-terminal'),   document.getElementById('terminal-panel'));
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  COMMAND PALETTE
+// ═══════════════════════════════════════════════════════════════════════════
+const COMMANDS = [
+  { icon:'⊞', label:'Toggle Explorer',       kbd:'Ctrl+E',       fn: () => togglePanel('explorer') },
+  { icon:'⊟', label:'Toggle Terminal',        kbd:'Ctrl+T',       fn: () => togglePanel('terminal') },
+  { icon:'＋', label:'New File',               kbd:'Ctrl+N',       fn: () => newUntitledTab() },
+  { icon:'＋', label:'New Terminal',           kbd:'Ctrl+Shift+T', fn: () => newTerminalTab() },
+  { icon:'💾', label:'Save File',              kbd:'Ctrl+S',       fn: () => saveActiveFile() },
+  { icon:'⚙', label:'Open Config',            kbd:'',             fn: () => { if(api) api.fs_home().then(h => openFile(h+'/.config/erebus/config.toml')); } },
+  { icon:'↺', label:'Reload Config',          kbd:'',             fn: async () => { const r=await api.reload_config(); if(r.ok){CONFIG=r.config;showToast('Config reloaded');} } },
+  { icon:'👁', label:'Toggle Hidden Files',   kbd:'',             fn: () => { showHidden=!showHidden; explorerRefresh(); } },
+  { icon:'↑', label:'Go to Parent Directory', kbd:'',             fn: () => explorerGoUp() },
+  { icon:'⟲', label:'Refresh Explorer',       kbd:'',             fn: () => explorerRefresh() },
+];
+
+let palSelIdx = 0, palFiltered = [...COMMANDS];
+
+function openPalette() {
+  document.getElementById('palette-overlay').classList.add('open');
+  document.getElementById('palette-input').value = '';
+  palSelIdx = 0;
+  renderPalette('');
+  setTimeout(() => document.getElementById('palette-input').focus(), 50);
+}
+
+function closePalette() {
+  document.getElementById('palette-overlay').classList.remove('open');
+}
+
+function renderPalette(q) {
+  palFiltered = COMMANDS.filter(c => c.label.toLowerCase().includes(q.toLowerCase()));
+  palSelIdx   = 0;
+  const el = document.getElementById('palette-results');
+  el.innerHTML = palFiltered.map((c, i) => `
+    <div class="palette-item ${i===0?'selected':''}" onclick="execPalCmd(${i})">
+      <span class="p-icon">${c.icon}</span>
+      <span class="p-label">${c.label}</span>
+      ${c.kbd ? `<span class="p-kbd">${c.kbd}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+function execPalCmd(i) {
+  palFiltered[i]?.fn();
+  closePalette();
+}
+
+document.getElementById('palette-input').addEventListener('input', e => renderPalette(e.target.value));
+document.getElementById('palette-input').addEventListener('keydown', e => {
+  if (e.key === 'Escape')     { closePalette(); return; }
+  if (e.key === 'Enter')      { execPalCmd(palSelIdx); return; }
+  if (e.key === 'ArrowDown')  palSelIdx = Math.min(palSelIdx+1, palFiltered.length-1);
+  else if (e.key === 'ArrowUp') palSelIdx = Math.max(palSelIdx-1, 0);
+  else return;
+  document.querySelectorAll('.palette-item').forEach((el,i) => el.classList.toggle('selected', i===palSelIdx));
+  e.preventDefault();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  GLOBAL KEYBINDS
+// ═══════════════════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key === 'p')            { e.preventDefault(); openPalette(); }
+  if (ctrl && e.key === 'e')            { e.preventDefault(); togglePanel('explorer'); }
+  if (ctrl && e.key === 't' && !e.shiftKey) { /* let terminal handle Ctrl+T */ }
+  if (ctrl && e.shiftKey && e.key==='T') { e.preventDefault(); newTerminalTab(); }
+  if (ctrl && e.key === 'n')            { e.preventDefault(); newUntitledTab(); }
+  if (ctrl && e.key === 's')            { /* handled in editor keydown */ }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2500);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FALLBACK: if pywebview isn't available yet (file:// preview in browser)
+// ═══════════════════════════════════════════════════════════════════════════
+// pywebview calls onErebusReady via evaluate_js once the window is ready.
+// If that hasn't happened after a short grace period, assume we're running
+// directly in a browser (demo mode) and boot with default values.
+setTimeout(() => {
+  if (!hasBackend()) {
+    console.warn('[Erebus] No pywebview API after grace period — running in demo mode.');
+    onErebusReady({
+      shell: { command: 'bash', provider: 'bash' },
+      editor: { provider: 'builtin', tab_size: 4 },
+      theme: {
+        font_family:'JetBrains Mono', font_size:13,
+        background:'#0a0a0a', surface:'#111111', surface_2:'#181818',
+        border:'#222222', accent:'#ff2a2a', accent_dim:'#8b0000',
+        text:'#e0e0e0', text_muted:'#555555', text_dim:'#333333',
+        rounded_corners: false,
+      },
+      layout: { explorer_width:22, terminal_height:32, show_explorer:true, show_terminal:true },
+      ui: { start_path:'~' },
+    }, false);
+  }
+}, 500);
+</script>
+</body>
+</html>
