@@ -1,0 +1,3 @@
+# Erebus dependencies
+pywebview>=4.4.1
+tomllib>=1.0.0     # stdlib in Python 3.11+, backport for older versions
