@@ -1,6 +1,6 @@
 # Erebus
 
-A keyboard-driven terminal IDE shell built with pywebview and GTK.
+A GUI CLI hybrid that combines CLI with graphical file exploerer and text editor.
 
 ## Install (Arch Linux)
 
