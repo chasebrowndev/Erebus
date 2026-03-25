@@ -1,8 +1,12 @@
+#
+# THIS PROJECT IS CURRENTLY NON-FUNCTIONAL - HEAVY DEVELOPMENT STAGE
+#
+
 # Erebus
 
 A GUI CLI hybrid that combines CLI with graphical file exploerer and text editor.
 
-## Install (Arch Linux)
+## Install (Arch Linux) [ non-Arch compatability in the future ] 
 
 ```bash
 git clone https://github.com/chasebrowndev/Erebus
