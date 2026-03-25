@@ -6,7 +6,7 @@ A keyboard-driven terminal IDE shell built with pywebview and GTK.
 
 ```bash
 git clone https://github.com/chasebrowndev/Erebus
-cd erebus
+cd Erebus
 makepkg -si
 ```
 
