@@ -42,7 +42,8 @@ package() {
     install -Dm644 "$repodir/app/config_loader.py" "$appdir/app/config_loader.py"
     install -Dm644 "$repodir/app/defaults.py"      "$appdir/app/defaults.py"
     install -Dm644 "$repodir/app/index.html"       "$appdir/app/index.html"
-
+    install -Dm644 "$repodir/app/setup.py" "$appdir/app/setup.py"
+    
     # ── /usr/bin launcher ─────────────────────────────────────────────────────
     install -dm755 "$pkgdir/usr/bin"
     cat > "$pkgdir/usr/bin/erebus" << 'LAUNCHER'
