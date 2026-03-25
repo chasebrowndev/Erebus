@@ -5,7 +5,7 @@ A keyboard-driven terminal IDE shell built with pywebview and GTK.
 ## Install (Arch Linux)
 
 ```bash
-git clone https://github.com/chasebrowndev/erebus
+git clone https://github.com/chasebrowndev/Erebus
 cd erebus
 makepkg -si
 ```
