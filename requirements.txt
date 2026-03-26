@@ -1,0 +1,4 @@
+# Erebus dependencies
+pywebview>=4.4.1
+# tomllib is stdlib in Python 3.11+; install tomli as backport for older versions
+# tomli>=2.0.0
