@@ -1410,14 +1410,17 @@ async function newTerminalTab() {
   if (BE()) {
     const {cols,rows} = xterm;
     await api.pty_new(id, shell, cwd, cols, rows);
-    // Inject OSC 7 prompt hook — appends to PROMPT_COMMAND rather than replacing it
+    // Inject OSC 7 CWD reporting — use template literals to avoid quote hell
     setTimeout(()=>{
-      if (label==='bash')
-        api.pty_write(id, 'PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND};}printf '\033]7;file://$HOSTNAME${PWD}\007'"
-');
-      else if (label==='zsh')
-        api.pty_write(id, 'autoload -Uz add-zsh-hook 2>/dev/null; _erebus_osc7(){ printf "\033]7;file://$HOST${PWD}\007"; }; add-zsh-hook precmd _erebus_osc7
-');
+      const ESC = '\x1b';
+      const BEL = '\x07';
+      if (label==='bash') {
+        const cmd = `PROMPT_COMMAND="\${PROMPT_COMMAND:+\${PROMPT_COMMAND};}printf '${ESC}]7;file://\$HOSTNAME\${PWD}${BEL}'"` + '\r';
+        api.pty_write(id, cmd);
+      } else if (label==='zsh') {
+        const cmd = `autoload -Uz add-zsh-hook 2>/dev/null; _erebus_osc7(){ printf "${ESC}]7;file://\$HOST\${PWD}${BEL}"; }; add-zsh-hook precmd _erebus_osc7` + '\r';
+        api.pty_write(id, cmd);
+      }
     }, 400);
   } else {
     xterm.write('\x1b[32mErebus terminal (demo — no backend)\x1b[0m\r\n$ ');
@@ -1599,22 +1602,21 @@ function fillSel(id,items,sel){
 // ═══════════════════════════════════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════════════════════════════════
-// window.pywebview.api is ALWAYS an {} object even before _createApi runs,
-// so !!window.pywebview.api is always truthy — useless as a readiness check.
-// pywebview fires 'pywebviewready' AFTER _createApi() populates all methods.
-// Only then do we assign api and allow BE() to return true.
-// main.py calls onErebusReady() via evaluate_js shortly after pywebviewready.
-// If neither fires within 1000ms we fall back to demo mode.
+// onErebusReady is called by main.py via evaluate_js after pywebview has fully
+// initialised the JS api (finish.js has run, _createApi has populated all methods).
+// It is the definitive "backend is ready" signal — set api here, not in a
+// pywebviewready listener which can race against evaluate_js injection.
+//
+// If no backend calls onErebusReady within 1000ms, fall back to demo mode.
 
 let _backendBooted = false;
 
-window.addEventListener('pywebviewready', () => {
-  api = window.pywebview.api;
-  // main.py's on_loaded() will call onErebusReady() momentarily via evaluate_js
-});
-
 function onErebusReady(cfg, firstRun) {
   _backendBooted = true;
+  // By the time on_loaded fires, window.pywebview.api is fully populated.
+  if (window.pywebview && window.pywebview.api) {
+    api = window.pywebview.api;
+  }
   CONFIG = cfg;
   document.getElementById('sb-shell').textContent  = (cfg.shell?.provider||'bash').toUpperCase();
   document.getElementById('sb-editor').textContent = (cfg.editor?.provider||'builtin').toUpperCase();
