@@ -1021,19 +1021,6 @@ function newUntitledTab(pane=activePaneId) {
 }
 
 async function openFile(path, pane=activePaneId) {
-  // If external editor is configured, open in terminal instead of builtin
-  const provider = CONFIG.editor?.provider || 'builtin';
-  if (provider !== 'builtin' && pane === activePaneId) {
-    // Open in the active terminal tab
-    const t = termTabs.find(t => t.id === activeTermId);
-    if (t) {
-      const cmd = CONFIG.editor?.command || provider;
-      t.xterm.paste(`${cmd} "${path.replace(/"/g, '\\"')}"\r`);
-    } else {
-      showToast('Open a terminal tab first to use '+provider, true);
-    }
-    return;
-  }
   // Switch to split pane if pane=2 and split not open
   if (pane===2) openSplit();
   const existing = editorTabs[pane].find(t=>t.path===path);
