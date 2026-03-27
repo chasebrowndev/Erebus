@@ -33,6 +33,7 @@ cp /etc/erebus/config.toml.example ~/.config/erebus/config.toml
 ```
 
 All keys are optional — only include values you want to override.
+On first launch, Erebus will show a setup wizard to configure your shell, editor, and start path.
 
 ## Development
 
@@ -47,12 +48,18 @@ python main.py
 
 ```
 erebus/
-├── PKGBUILD           ← Arch package build script
-├── erebus.install     ← pacman install hooks
-├── requirements.txt   ← pip deps (for non-Arch dev environments)
+├── PKGBUILD             ← Arch package build script
+├── erebus.install       ← pacman install hooks
+├── requirements.txt     ← pip deps (for non-Arch dev environments)
 └── app/
-    ├── main.py        ← entry point (pywebview window)
-    ├── config_loader.py ← TOML loader with defaults fallback
-    ├── defaults.py    ← single source of truth for all config values
-    └── index.html     ← full UI shell
+    ├── main.py          ← entry point (pywebview window + JS API wiring)
+    ├── config_loader.py ← TOML loader with deep-merge over defaults
+    ├── defaults.py      ← single source of truth for all config values
+    ├── setup.py         ← first-launch setup wizard backend
+    ├── pty_bridge.py    ← pseudoterminal session manager
+    ├── fs_api.py        ← filesystem API (read/write/list/delete/etc.)
+    ├── git_api.py       ← git status/diff/log/branch integration
+    ├── search_api.py    ← find-in-files (ripgrep or Python fallback)
+    ├── file_watcher.py  ← mtime polling for external file changes
+    └── index.html       ← full UI shell (editor, terminal, explorer)
 ```

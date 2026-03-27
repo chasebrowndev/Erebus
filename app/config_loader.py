@@ -75,12 +75,13 @@ def save_config(toml_text: str) -> dict:
     Overwrite the user's config.toml with the given TOML text.
     Validates that it parses before writing.
     Returns {"ok": True} or {"ok": False, "error": "..."}.
+
+    Note: tomllib.loads() accepts str (unlike load() which requires binary mode).
     """
-    import copy
     if tomllib is None:
         return {"ok": False, "error": "tomllib not available"}
     try:
-        # Validate parse
+        # Validate parse before writing
         tomllib.loads(toml_text)
     except Exception as e:
         return {"ok": False, "error": f"TOML parse error: {e}"}
