@@ -80,4 +80,5 @@ DESKTOP
 # text_muted     = "#555555"
 # text_dim       = "#333333"
 # rounded_corners = false
+EXAMPLE
 }
